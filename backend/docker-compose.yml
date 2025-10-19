@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+  # ===================== RABBITMQ =====================
+  rabbitmq:
+    build: ./rabbitmq
+    container_name: rabbitmq_face_swap
+    env_file:
+      - .env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - backend_net
+
+  # ===================== API (Flask) =====================
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: face_swap_api
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    ports:
+      - "8000:5000"
+    env_file:
+      - .env
+    environment:
+      # --- RabbitMQ ---
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+
+      # --- Redis & Mongo ---
+      REDIS_URL: ${REDIS_URL}
+      MONGO_URI: ${MONGO_URI}
+      MONGO_DB: face_swap
+
+      # --- Google Drive OAuth ---
+      GOOGLE_CREDENTIALS_PATH: /app/credentials.json
+      GOOGLE_TOKEN_PATH: /app/token/token.pickle
+    volumes:
+      # Share /tmp directory with worker for uploaded images
+      - shared_tmp:/tmp
+      # Share results directory for fallback storage
+      - results_storage:/tmp/results
+      # OAuth token (shared with worker)
+      - ./credentials.json:/app/credentials.json:ro
+      - oauth_token:/app/token
+    networks:
+      - backend_net
+
+  # ===================== WORKER (Face Swap) =====================
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: face_swap_worker
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - api
+    env_file:
+      - .env
+    environment:
+      # --- RabbitMQ ---
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+
+      # --- MongoDB ---
+      MONGO_URI: ${MONGO_URI}
+
+      # --- API Communication ---
+      API_UPDATE_URL: http://api:5000/update_status
+
+      # --- Google Drive OAuth ---
+      GOOGLE_CREDENTIALS_PATH: /app/credentials.json
+      GOOGLE_TOKEN_PATH: /app/token/token.pickle
+    volumes:
+      # Mount model file from backend folder
+      - ./inswapper_128.onnx:/app/inswapper_128.onnx:ro
+      # Share /tmp directory with API for uploaded images
+      - shared_tmp:/tmp
+      # Share results directory for fallback storage
+      - results_storage:/tmp/results
+      # OAuth credentials and token
+      - ./credentials.json:/app/credentials.json:ro
+      - oauth_token:/app/token
+    networks:
+      - backend_net
+
+volumes:
+  rabbitmq_data:
+  shared_tmp: # Shared volume for temporary files between API and worker
+  results_storage: # Shared volume for result images (fallback)
+  oauth_token: # Shared OAuth token between API and worker
+
+networks:
+  backend_net:
+    driver: bridge

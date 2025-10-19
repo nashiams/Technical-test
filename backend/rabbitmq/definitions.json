@@ -1,0 +1,85 @@
+{
+  "rabbit_version": "4.1.0",
+  "users": [
+    {
+      "name": "appuser",
+      "password_hash": "6IGrHU4k5NxVp3Ro4R9C/vq6wVOipQNI0w1qNFHMkH2prdig",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [{ "name": "/" }],
+  "permissions": [
+    {
+      "user": "appuser",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "queues": [
+    {
+      "name": "face_swap_jobs",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "dlx_face_swap",
+        "x-message-ttl": 300000
+      }
+    },
+    {
+      "name": "dlq_face_swap",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "face_swap_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false
+    },
+    {
+      "name": "dlx_face_swap",
+      "vhost": "/",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false
+    }
+  ],
+  "bindings": [
+    {
+      "source": "face_swap_exchange",
+      "vhost": "/",
+      "destination": "face_swap_jobs",
+      "destination_type": "queue",
+      "routing_key": "face.swap"
+    },
+    {
+      "source": "dlx_face_swap",
+      "vhost": "/",
+      "destination": "dlq_face_swap",
+      "destination_type": "queue",
+      "routing_key": ""
+    }
+  ],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "retry_policy",
+      "pattern": "^face_swap_jobs$",
+      "definition": {
+        "dead-letter-exchange": "dlx_face_swap"
+      },
+      "priority": 1,
+      "apply-to": "queues"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# Core worker dependencies
+pika==1.3.2
+pymongo==4.9.2
+requests==2.32.3
+
+# Google Drive API (replaces firebase-admin)
+google-api-python-client==2.149.0
+google-auth==2.35.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1
+
+
+# Face swap and ML stack
+insightface==0.7.3
+onnx==1.17.0
+onnxruntime==1.19.2
+opencv-python-headless==4.10.0.84
+numpy==2.1.2
+Pillow==11.0.0
+Cython==3.0.11
+
+# Optional utilities
+tqdm==4.66.5
+protobuf==5.28.2
+
+# For environment consistency
+python-dotenv==1.0.1

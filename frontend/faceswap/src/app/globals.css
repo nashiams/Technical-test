@@ -1,0 +1,50 @@
+/* Updated: 2025-10-19T13:42:00.233Z */
+/* Updated: 2025-10-19T13:22:12.694Z */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: #0d1117;
+  --color-foreground: #f0f6fc;
+  --color-secondary-text: #7d8590;
+  --color-input-bg: #21262d;
+  --color-border: #30363d;
+  --color-primary: #238636;
+  --color-link: #58a6ff;
+  --color-error: #f85149;
+  --radius-lg: 0.5rem;
+  --radius-md: 0.375rem;
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-body);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+  }
+
+  .hero-title {
+    font-family: var(--font-hero);
+  }
+}
+
+nextjs-portal {
+  display: none !important;
+}
