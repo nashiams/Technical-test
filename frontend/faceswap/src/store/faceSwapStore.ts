@@ -9,9 +9,9 @@ interface FaceSwapState {
   error: string | null;
   setImage1: (file: File | null) => void;
   setImage2: (file: File | null) => void;
-  setJobId: (id: string | null) => void;
+  setJobId: (id: string) => void;
   setStatus: (status: FaceSwapState["status"]) => void;
-  setResultUrl: (url: string | null) => void;
+  setResultUrl: (url: string) => void;
   setError: (error: string | null) => void;
   reset: () => void;
 }

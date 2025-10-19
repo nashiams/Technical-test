@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { Upload, X } from "lucide-react";
 
 interface ImageUploaderProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File | null) => void;
   preview: string | null;
   label: string;
 }
@@ -34,7 +34,7 @@ export default function ImageUploader({
 
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onFileSelect(null as any);
+    onFileSelect(null);
   };
 
   return (
