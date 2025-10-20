@@ -3,7 +3,6 @@ import os
 import uuid
 import pika
 import redis
-from redis_lock import Lock
 from db import jobs_collection
 
 # ================== REDIS (Upstash) SETUP ==================
@@ -77,25 +76,50 @@ def publish_job(job_id, img1_path, img2_path, session_id):
 def acquire_lock(session_id, timeout=300):
     """Try to acquire a Redis lock so only one active job per session."""
     try:
+        # Simple SET NX (set if not exists) with expiration
         lock_key = f"session_lock:{session_id}"
-        lock = Lock(redis_client, lock_key, expire=timeout, auto_renewal=True)
         
-        if lock.acquire(blocking=False):
-            return lock
+        # Try to set the key (returns True if set, False if already exists)
+        locked = redis_client.set(lock_key, "locked", nx=True, ex=timeout)
+        
+        if locked:
+            print(f"🔒 Lock acquired for session: {session_id} (key: {lock_key})")
+            return True
         else:
-            return None
+            print(f"⚠️ Lock already exists for session: {session_id}")
+            return False
     except Exception as e:
-        print(f"Failed to acquire lock: {e}")
-        return None
+        print(f"❌ Failed to acquire lock: {e}")
+        return False
 
 
 def release_lock(session_id):
-    """Release the Redis lock."""
+    """Release the Redis lock by deleting the key."""
     try:
         lock_key = f"session_lock:{session_id}"
-        redis_client.delete(lock_key)
+        
+        # Check if key exists before deletion
+        exists_before = redis_client.exists(lock_key)
+        print(f"🔍 Lock key '{lock_key}' exists before deletion: {exists_before}")
+        
+        # Delete the key
+        result = redis_client.delete(lock_key)
+        
+        # Verify deletion
+        exists_after = redis_client.exists(lock_key)
+        print(f"🔍 Lock key '{lock_key}' exists after deletion: {exists_after}")
+        
+        if result > 0:
+            print(f"🔓 Lock released for session: {session_id} (deleted key: {lock_key})")
+            if exists_after:
+                print(f"⚠️ WARNING: Key still exists after deletion!")
+        else:
+            print(f"⚠️ No lock found to release for session: {session_id} (key: {lock_key})")
+            
     except Exception as e:
-        print(f"Failed to release lock: {e}")
+        print(f"❌ Failed to release lock: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ================== HELPER: Job Creation ==================
 def create_job(session_id):

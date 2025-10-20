@@ -22,11 +22,14 @@ export async function publishFaceSwap(
   formData.append("image1", image1);
   formData.append("image2", image2);
 
+  console.log("📤 Submitting face swap request...");
+
   const response = await fetch("/api/publish", {
     method: "POST",
     body: formData,
-    // Credentials included to send cookies
     credentials: "include",
+    // Prevent caching
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -34,7 +37,10 @@ export async function publishFaceSwap(
     throw new Error(error.error || "Failed to publish face swap");
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log("✅ Received jobId:", data.jobId);
+
+  return data;
 }
 
 /**
