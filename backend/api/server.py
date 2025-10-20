@@ -8,6 +8,15 @@ from oauth_routes import register_oauth_routes
 
 app = Flask(__name__)
 
+# Disable response caching globally
+@app.after_request
+def add_no_cache_headers(response):
+    """Add no-cache headers to all responses"""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 # Register OAuth routes
 register_oauth_routes(app)
 
@@ -15,7 +24,9 @@ register_oauth_routes(app)
 def health():
     """ Health check endpoint."""
 
-    return jsonify({"status": "ok", "service": "flask-api"}), 200
+    random_value = os.urandom(8).hex()
+
+    return jsonify({"status": "ok", "service": "flask-api", "random": random_value}), 200
 
 
 @app.route("/publish", methods=["POST"])
@@ -44,6 +55,8 @@ def publish():
 
     #  Generate jobId + create job directory
     job_id = str(uuid.uuid4())
+    print(f"🆕 Generated NEW job_id: {job_id} for session: {session_id}")
+    
     job_dir = f"/tmp/{job_id}"
     try:
         os.makedirs(job_dir, exist_ok=True)
@@ -105,7 +118,15 @@ def publish():
         return jsonify({"error": f"Failed to publish job: {e}"}), 500
 
     #  Respond success
-    return jsonify({"status": "processing", "jobId": job_id}), 200
+    print(f"📤 Responding with job_id: {job_id}")
+    
+    # Create response with explicit no-cache headers
+    response = jsonify({"status": "processing", "jobId": job_id})
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response, 200
 
 
 @app.route("/status/<job_id>", methods=["GET"])
@@ -130,20 +151,14 @@ def status(job_id):
 
 @app.route("/update_status", methods=["POST"])
 def update_status():
-
     """
     INTERNAL endpoint used by the worker to report completion.
-    Expected payload:
-      { "jobId": "...", "resultUrl": "https://..." }
-    Actions:
-      - Update MongoDB job document
-      - Release session lock (so user can submit new job)
-      - (Optional) trigger immediate cleanup of /tmp if desired
     """
-    
     data = request.get_json(force=True)
     job_id = data.get("jobId")
     result_url = data.get("resultUrl")
+
+    print(f"🔔 /update_status called for job: {job_id}")
 
     if not job_id or not result_url:
         return jsonify({"error": "Missing jobId or resultUrl"}), 400
@@ -152,16 +167,22 @@ def update_status():
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
+    session_id = job.get("sessionId")
+    print(f"📍 Job {job_id} belongs to session: {session_id}")
+
     jobs_collection.update_one(
         {"jobId": job_id},
         {"$set": {"status": "completed", "resultUrl": result_url}}
     )
+    print(f"✅ Job {job_id} marked as completed in MongoDB")
 
     # Release session lock (worker finished)
     try:
-        release_lock(job["sessionId"])
-    except Exception:
-        pass
+        print(f"🔓 Attempting to release lock for session: {session_id}")
+        release_lock(session_id)
+        print(f"✅ Lock release attempted for session: {session_id}")
+    except Exception as e:
+        print(f"❌ Failed to release lock: {e}")
 
     return jsonify({"status": "updated"}), 200
 

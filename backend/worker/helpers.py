@@ -1,94 +1,126 @@
 import os
 import shutil
+import time
 from google_drive_oauth import drive_service, GOOGLE_DRIVE_FOLDER_ID
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-def upload_to_google_drive(file_path, jobId):
-    """Upload result image to Google Drive"""
-    try:
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Result file not found: {file_path}")
-        
-        # Verify file size
-        file_size = os.path.getsize(file_path)
-        if file_size == 0:
-            raise ValueError(f"Result file is empty: {file_path}")
-        
-        print(f"📤 Uploading {file_size} bytes to Google Drive...")
-        print(f"📁 Target folder ID: {GOOGLE_DRIVE_FOLDER_ID}")
-        
-        # Prepare file metadata
-        file_metadata = {
-            'name': f'{jobId}.jpg',
-            'parents': [GOOGLE_DRIVE_FOLDER_ID],
-            'description': f'Face swap result for job {jobId}',
-        }
-        
-        # Upload file
-        media = MediaFileUpload(
-            file_path,
-            mimetype='image/jpeg',
-            resumable=True
-        )
-        
-        print("🔄 Creating file in Google Drive...")
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, webViewLink, webContentLink, name'
-        ).execute()
-        
-        file_id = file.get('id')
-        file_name = file.get('name')
-        
-        print(f"✅ File created: {file_name} (ID: {file_id})")
-        
-        # Make file publicly accessible
-        print("🔓 Making file public...")
-        permission = {
-            'type': 'anyone',
-            'role': 'reader'
-        }
-        drive_service.permissions().create(
-            fileId=file_id,
-            body=permission,
-            fields='id'
-        ).execute()
-        
-        # Get direct view link
-        result_url = f"https://drive.google.com/uc?export=view&id={file_id}"
-        
-        print(f"✅ Uploaded to Google Drive: {result_url}")
-        print(f"📁 File ID: {file_id}")
-        print(f"🔗 View link: https://drive.google.com/file/d/{file_id}/view")
-        
-        return result_url
-        
-    except HttpError as e:
-        error_details = e.error_details if hasattr(e, 'error_details') else str(e)
-        print(f"❌ Google Drive HTTP Error: {e.resp.status} - {error_details}")
-        
-        if e.resp.status == 403:
-            print("⚠️ Permission denied!")
-            print(f"📧 Service account: storage-faceswap@storage-faceswap-1.iam.gserviceaccount.com")
-            print(f"📁 Folder ID: {GOOGLE_DRIVE_FOLDER_ID}")
-            print("💡 Solutions:")
-            print("   1. Share folder with service account (Editor role)")
-            print("   2. Or remove FOLDER_ID from .env to auto-create")
-        elif e.resp.status == 404:
-            print("⚠️ Folder not found! Check FOLDER_ID or remove it to auto-create.")
+def upload_to_google_drive(file_path, jobId, max_retries=3):
+    """Upload result image to Google Drive with retry logic"""
+    
+    for attempt in range(max_retries):
+        try:
+            # Check if drive_service is initialized
+            if drive_service is None:
+                print("⚠️ Google Drive not initialized - using fallback")
+                return fallback_to_local(file_path, jobId)
             
-        # Fall back to local storage
-        return fallback_to_local(file_path, jobId)
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Result file not found: {file_path}")
+            
+            # Verify file size
+            file_size = os.path.getsize(file_path)
+            if file_size == 0:
+                raise ValueError(f"Result file is empty: {file_path}")
+            
+            print(f"📤 Uploading {file_size} bytes to Google Drive (attempt {attempt + 1}/{max_retries})...")
+            print(f"📁 Target folder ID: {GOOGLE_DRIVE_FOLDER_ID}")
+            
+            # Prepare file metadata
+            file_metadata = {
+                'name': f'{jobId}.jpg',
+                'parents': [GOOGLE_DRIVE_FOLDER_ID],
+                'description': f'Face swap result for job {jobId}',
+            }
+            
+            # Upload file with chunked upload for large files
+            media = MediaFileUpload(
+                file_path,
+                mimetype='image/jpeg',
+                resumable=True,
+            )
+            
+            print("🔄 Creating file in Google Drive...")
+            
+            file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, webViewLink, webContentLink, name'
+            ).execute()
+            
+            file_id = file.get('id')
+            file_name = file.get('name')
+            
+            print(f"✅ File created: {file_name} (ID: {file_id})")
+            
+            # Make file publicly accessible
+            print("🔓 Making file public...")
+            permission = {
+                'type': 'anyone',
+                'role': 'reader'
+            }
+            drive_service.permissions().create(
+                fileId=file_id,
+                body=permission,
+                fields='id'
+            ).execute()
+            
+            # Use direct download link (converts to image automatically)
+            result_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            
+            # Or use the newer format
+            # result_url = f"https://drive.usercontent.google.com/download?id={file_id}"
+            
+            print(f"✅ Uploaded to Google Drive: {result_url}")
+            print(f"📁 File ID: {file_id}")
+            print(f"🔗 Alternative URLs:")
+            print(f"   View: https://drive.google.com/file/d/{file_id}/view")
+            print(f"   Direct: https://drive.google.com/uc?export=view&id={file_id}")
+            
+            return result_url
+            
+        except BrokenPipeError as e:
+            print(f"❌ BrokenPipeError on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                print(f"🔄 Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                print("❌ Max retries reached, using fallback")
+                return fallback_to_local(file_path, jobId)
         
-    except Exception as e:
-        print(f"❌ Google Drive upload error: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Fall back to local storage
-        return fallback_to_local(file_path, jobId)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            print(f"❌ Network error on attempt {attempt + 1}: {type(e).__name__}: {e}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"🔄 Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                return fallback_to_local(file_path, jobId)
+                
+        except HttpError as e:
+            error_details = e.error_details if hasattr(e, 'error_details') else str(e)
+            print(f"❌ Google Drive HTTP Error: {e.resp.status} - {error_details}")
+            
+            if e.resp.status in [500, 502, 503, 504] and attempt < max_retries - 1:
+                # Server errors - retry
+                wait_time = 2 ** attempt
+                print(f"🔄 Server error, retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                return fallback_to_local(file_path, jobId)
+                
+        except Exception as e:
+            print(f"❌ Upload error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return fallback_to_local(file_path, jobId)
+    
+    # Should never reach here, but just in case
+    return fallback_to_local(file_path, jobId)
 
 def fallback_to_local(file_path, jobId):
     """Fallback: Save to shared volume and return API URL"""

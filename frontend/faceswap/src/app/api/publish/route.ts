@@ -21,8 +21,17 @@ export async function POST(request: NextRequest) {
 
     // Get form data from request
     const formData = await request.formData();
-    const image1 = formData.get("image1");
-    const image2 = formData.get("image2");
+    const image1 = formData.get("image1") as File | null;
+    const image2 = formData.get("image2") as File | null;
+
+    console.log(`📥 Received files:`, {
+      image1: image1
+        ? `${image1.name} (${image1.size} bytes, ${image1.type})`
+        : "null",
+      image2: image2
+        ? `${image2.name} (${image2.size} bytes, ${image2.type})`
+        : "null",
+    });
 
     if (!image1 || !image2) {
       return NextResponse.json(
@@ -31,21 +40,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Forward request to Python backend
+    // Create new FormData for backend with proper file handling
     const backendFormData = new FormData();
-    backendFormData.append("image1", image1);
-    backendFormData.append("image2", image2);
+
+    // Convert Files to Blobs with correct filename and type
+    const blob1 = new Blob([await image1.arrayBuffer()], { type: image1.type });
+    const blob2 = new Blob([await image2.arrayBuffer()], { type: image2.type });
+
+    backendFormData.append("image1", blob1, image1.name);
+    backendFormData.append("image2", blob2, image2.name);
     backendFormData.append("sessionId", sessionId);
 
     console.log(`📤 Forwarding to backend: ${BACKEND_API_URL}/publish`);
+    console.log(`📋 FormData being sent:`, {
+      image1: `${image1.name} (${blob1.size} bytes)`,
+      image2: `${image2.name} (${blob2.size} bytes)`,
+      sessionId: sessionId,
+    });
 
     const backendResponse = await fetch(`${BACKEND_API_URL}/publish`, {
       method: "POST",
       body: backendFormData,
+      // Don't set Content-Type - let fetch set it with boundary
     });
+
+    console.log(`📨 Backend response status: ${backendResponse.status}`);
 
     if (!backendResponse.ok) {
       const error = await backendResponse.json();
+      console.error(`❌ Backend error:`, error);
       return NextResponse.json(
         { error: error.error || "Backend processing failed" },
         { status: backendResponse.status }

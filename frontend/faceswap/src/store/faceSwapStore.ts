@@ -25,7 +25,13 @@ export const useFaceSwapStore = create<FaceSwapState>((set) => ({
   error: null,
   setImage1: (file) => set({ image1: file }),
   setImage2: (file) => set({ image2: file }),
-  setJobId: (id) => set({ jobId: id }),
+  setJobId: (id) =>
+    set({
+      jobId: id,
+      // Clear old result when setting new jobId
+      resultUrl: null,
+      error: null,
+    }),
   setStatus: (status) => set({ status }),
   setResultUrl: (url) => set({ resultUrl: url }),
   setError: (error) => set({ error }),
