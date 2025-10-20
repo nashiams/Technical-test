@@ -1,6 +1,6 @@
 # Free Face Swap
 
-## 🚀 Quick Deployment
+## Quick Deployment
 
 ### Frontend (Vercel)
 

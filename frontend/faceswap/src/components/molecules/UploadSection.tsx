@@ -6,8 +6,8 @@ import ImageUploader from "@/components/atoms/ImageUploader";
 interface UploadSectionProps {
   image1: File | null;
   image2: File | null;
-  onImage1Change: (file: File) => void;
-  onImage2Change: (file: File) => void;
+  onImage1Change: (file: File | null) => void;
+  onImage2Change: (file: File | null) => void;
 }
 
 export default function UploadSection({
