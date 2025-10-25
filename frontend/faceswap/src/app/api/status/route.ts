@@ -12,8 +12,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
 
-    console.log(`🔍 Checking status for job: ${jobId}`);
-
     // Forward request to Python backend
     const backendResponse = await fetch(`${BACKEND_API_URL}/status/${jobId}`, {
       method: "GET",
@@ -43,15 +41,9 @@ export async function GET(request: NextRequest) {
     response.headers.set("Pragma", "no-cache");
     response.headers.set("Expires", "0");
 
-    if (data.status === "completed") {
-      console.log(`✅ Job ${jobId} completed`);
-    } else {
-      console.log(`⏳ Job ${jobId} still ${data.status}`);
-    }
-
     return response;
   } catch (error) {
-    console.error("❌ Status API error:", error);
+    console.error(" Status API error:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal server error",

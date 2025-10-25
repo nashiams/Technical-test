@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', '/app/credentials.json')
 TOKEN_PATH = os.getenv('GOOGLE_TOKEN_PATH', '/app/token/token.pickle')
-REDIRECT_URI = 'https://freefaceswap.nashi.lat/oauth2callback'
+REDIRECT_URI = 'https://freefaceswap.nashi.lat/oauth2callback' 
 
 def register_oauth_routes(app):
     """Register OAuth routes with Flask app"""

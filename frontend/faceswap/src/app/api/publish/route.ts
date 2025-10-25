@@ -14,9 +14,8 @@ export async function POST(request: NextRequest) {
     if (!sessionId) {
       // Generate new session ID
       sessionId = uuidv4();
-      console.log(`🆕 New session created: ${sessionId}`);
     } else {
-      console.log(`♻️ Using existing session: ${sessionId}`);
+      console.log(` Using existing session: ${sessionId}`);
     }
 
     // Get form data from request
@@ -51,8 +50,7 @@ export async function POST(request: NextRequest) {
     backendFormData.append("image2", blob2, image2.name);
     backendFormData.append("sessionId", sessionId);
 
-    console.log(`📤 Forwarding to backend: ${BACKEND_API_URL}/publish`);
-    console.log(`📋 FormData being sent:`, {
+    console.log(` FormData being sent:`, {
       image1: `${image1.name} (${blob1.size} bytes)`,
       image2: `${image2.name} (${blob2.size} bytes)`,
       sessionId: sessionId,
@@ -63,8 +61,6 @@ export async function POST(request: NextRequest) {
       body: backendFormData,
       // Don't set Content-Type - let fetch set it with boundary
     });
-
-    console.log(`📨 Backend response status: ${backendResponse.status}`);
 
     if (!backendResponse.ok) {
       const error = await backendResponse.json();
@@ -90,8 +86,6 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60, // 1 hour
       path: "/",
     });
-
-    console.log(`✅ Job created: ${data.jobId}`);
 
     return response;
   } catch (error) {
