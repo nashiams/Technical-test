@@ -55,6 +55,9 @@ export default function FaceSwapClient() {
           setStatus("completed");
         } else if (response.status === "processing") {
           // Continue polling
+        } else if (response.status === "failed") {
+          setStatus("error");
+          setError("Please try different photos.");
         } else {
           setStatus("error");
           setError("Unexpected status: " + response.status);
