@@ -144,6 +144,8 @@ def status(job_id):
 
     if job.get("status") == "completed":
         return jsonify({"status": "completed", "image_url": job.get("resultUrl")}), 200
+    elif job.get("status") == "failed":
+        return jsonify({"status": "failed", "error": job.get("error")}), 200
     else:
         return jsonify({"status": "processing"}), 200
 
