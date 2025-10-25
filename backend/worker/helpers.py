@@ -23,8 +23,7 @@ def upload_to_google_drive(file_path, jobId, max_retries=3):
             if file_size == 0:
                 raise ValueError(f"Result file is empty: {file_path}")
             
-            print(f"📤 Uploading {file_size} bytes to Google Drive (attempt {attempt + 1}/{max_retries})...")
-            print(f"📁 Target folder ID: {GOOGLE_DRIVE_FOLDER_ID}")
+
             
             # Prepare file metadata
             file_metadata = {
@@ -40,7 +39,6 @@ def upload_to_google_drive(file_path, jobId, max_retries=3):
                 resumable=True,
             )
             
-            print("🔄 Creating file in Google Drive...")
             
             file = drive_service.files().create(
                 body=file_metadata,
@@ -49,12 +47,9 @@ def upload_to_google_drive(file_path, jobId, max_retries=3):
             ).execute()
             
             file_id = file.get('id')
-            file_name = file.get('name')
             
-            print(f"✅ File created: {file_name} (ID: {file_id})")
             
             # Make file publicly accessible
-            print("🔓 Making file public...")
             permission = {
                 'type': 'anyone',
                 'role': 'reader'
@@ -68,15 +63,7 @@ def upload_to_google_drive(file_path, jobId, max_retries=3):
             # Use direct download link (converts to image automatically)
             result_url = f"https://drive.google.com/uc?export=download&id={file_id}"
             
-            # Or use the newer format
-            # result_url = f"https://drive.usercontent.google.com/download?id={file_id}"
-            
-            print(f"✅ Uploaded to Google Drive: {result_url}")
-            print(f"📁 File ID: {file_id}")
-            print(f"🔗 Alternative URLs:")
-            print(f"   View: https://drive.google.com/file/d/{file_id}/view")
-            print(f"   Direct: https://drive.google.com/uc?export=view&id={file_id}")
-            
+ 
             return result_url
             
         except BrokenPipeError as e:
@@ -134,8 +121,6 @@ def fallback_to_local(file_path, jobId):
     
     # Return URL that API can serve
     fallback_url = f"http://api:5000/results/{jobId}.jpg"
-    print(f"💾 Saved locally: {fallback_path}")
-    print(f"🔗 Fallback URL: {fallback_url}")
     
     return fallback_url
 
@@ -146,7 +131,6 @@ def cleanup_job_files(jobId, img1_path=None, img2_path=None, result_path=None):
         job_dir = f"/tmp/{jobId}"
         if os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
-            print(f"🧹 Cleaned up job directory: {job_dir}")
         
         # Remove individual files if they exist outside job dir
         for file_path in [img1_path, img2_path, result_path]:
@@ -155,10 +139,8 @@ def cleanup_job_files(jobId, img1_path=None, img2_path=None, result_path=None):
                     # Check if file is not inside job_dir to avoid double deletion
                     if not file_path.startswith(job_dir):
                         os.remove(file_path)
-                        print(f"🧹 Removed file: {file_path}")
                 except Exception as err:
-                    print(f"⚠️ Could not remove {file_path}: {err}")
+                    print(f"Could not remove {file_path}: {err}")
                     
-        print(f"✅ Cleanup completed for job {jobId}")
     except Exception as e:
-        print(f"⚠️ Cleanup error for job {jobId}: {e}")
+        print(f" Cleanup error for job {jobId}: {e}")

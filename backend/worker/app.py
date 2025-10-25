@@ -2,54 +2,43 @@ import os
 import json
 import pika
 import requests
+import redis
 from pymongo import MongoClient
 from datetime import datetime
 
-print("=" * 60)
-print("🚀 Face Swap Worker Starting...")
-print("=" * 60)
+
 
 # Setup environment
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://appuser:changeme123@rabbitmq:5672")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 API_UPDATE_URL = os.getenv("API_UPDATE_URL", "http://api:5000/update_status")
 
-print(f"📡 RabbitMQ URL: {RABBITMQ_URL}")
-print(f"🗄️  MongoDB URI: {MONGO_URI[:50]}...")
-print(f"🔄 API Update URL: {API_UPDATE_URL}")
 
 # Connect MongoDB
 try:
-    print("\n🔌 Connecting to MongoDB...")
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     # Test connection
     client.server_info()
     db = client["face_swap"]
     jobs_collection = db["jobs"]
-    print("✅ MongoDB connected successfully")
 except Exception as e:
     print(f"❌ MongoDB connection failed: {e}")
     raise e
 
 # Initialize face swap model
 try:
-    print("\n🤖 Loading face swap models...")
     from face_swap import prepare_app, swap_faces
     app, swapper = prepare_app()
-    print("✅ Face swap models loaded")
 except Exception as e:
-    print(f"❌ Failed to load face swap models: {e}")
     import traceback
     traceback.print_exc()
     raise e
 
 # Import helpers after models are loaded
 try:
-    print("\n📦 Loading helpers...")
     from helpers import upload_to_google_drive, cleanup_job_files
-    print("✅ Helpers loaded")
 except Exception as e:
-    print(f"❌ Failed to load helpers: {e}")
+    print(f" Failed to load helpers: {e}")
     import traceback
     traceback.print_exc()
     raise e
@@ -104,98 +93,108 @@ def process_job(job_data):
             response = requests.post(API_UPDATE_URL, json=update_data, timeout=10)
             
             if response.status_code != 200:
-                print(f"⚠️ Failed to update job status via API: {response.text}")
+                print(f" Failed to update job status via API: {response.text}")
         except requests.exceptions.RequestException as e:
-            print(f"⚠️ Could not reach API to update status: {e}")
+            print(f" Could not reach API to update status: {e}")
         
-        print(f"✅ Job {jobId} completed successfully")
+        print(f" Job {jobId} completed successfully")
         
     except Exception as e:
-        print(f"❌ Job {jobId} failed: {str(e)}")
-        # Update MongoDB status to failed
+        error_msg = str(e)
+        print(f" Job {jobId} failed: {error_msg}")
+        
+        # Determine error type for user-friendly messages
+        if "No faces found" in error_msg:
+            user_error = "No faces detected in one or both images. Please use clear photos with visible faces."
+        elif "only" in error_msg and "faces" in error_msg:
+            user_error = error_msg  # e.g., "The image includes only 1 faces, however, you asked for face 2"
+        else:
+            user_error = "Failed to process images. Please try different photos."
+        
+        # Update MongoDB status to failed with user-friendly error
         jobs_collection.update_one(
             {"jobId": jobId},
             {"$set": {
                 "status": "failed",
-                "error": str(e),
+                "error": user_error,
+                "technicalError": error_msg,  # Keep technical details for debugging
                 "updatedAt": datetime.utcnow()
             }}
         )
         
-        # Try to notify API about failure (to release lock)
+        # Notify API to release lock and update status
         try:
-            requests.post(
-                f"{API_UPDATE_URL.replace('/update_status', '')}/release_lock",
-                json={"sessionId": sessionId},
+            error_update = {
+                "jobId": jobId,
+                "status": "failed",
+                "error": user_error
+            }
+            response = requests.post(
+                f"{API_UPDATE_URL.replace('/update_status', '')}/update_error",
+                json=error_update,
                 timeout=5
             )
-        except:
-            pass
+            
+            if response.status_code == 404:
+                from helpers import release_lock
+                release_lock(sessionId)
+        except Exception as api_err:
+            print(f" Could not notify API about error: {api_err}")
+            try:
+              
+                redis_client = redis.from_url(os.getenv("REDIS_URL"))
+                redis_client.delete(f"session_lock:{sessionId}")
+                print(f"🔓 Manually released lock for session: {sessionId}")
+            except:
+                pass
         
-        raise e
     finally:
-        # Cleanup temporary files
         cleanup_job_files(jobId, img1_path, img2_path, result_path)
 
 def callback(ch, method, properties, body):
     """RabbitMQ message callback"""
     try:
-        job_data = json.loads(body)
-        jobId = job_data.get('jobId')
-        print(f"\n{'='*60}")
-        print(f"📩 Received job: {jobId}")
-        print(f"📋 Job data: {json.dumps(job_data, indent=2)}")
-        print(f"{'='*60}\n")
-        
+        job_data = json.loads(body)     
         process_job(job_data)
         ch.basic_ack(delivery_tag=method.delivery_tag)
         
-        print(f"\n{'='*60}")
-        print(f"✅ Job {jobId} acknowledged and removed from queue")
-        print(f"{'='*60}\n")
+      
         
     except Exception as e:
         import traceback
-        print(f"\n{'='*60}")
-        print(f"❌ Error processing job: {e}")
-        print(f"Stack trace:")
+      
         traceback.print_exc()
-        print(f"{'='*60}\n")
+        
         # Send to DLQ - don't requeue to avoid infinite loops
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
 def main():
     """Main worker loop"""
-    print("\n" + "=" * 60)
-    print("🚀 Starting main worker loop...")
-    print("=" * 60)
+
     
     # Verify Google Drive connection
     try:
-        print("\n☁️ Verifying Google Drive connection...")
+    
         from google_drive_oauth import drive_service, GOOGLE_DRIVE_FOLDER_ID
         
         if drive_service is None:
-            print("⚠️ Google Drive not authorized yet")
-            print("💡 Visit http://localhost:8000/authorize to login")
-            print("🔄 Worker will use fallback local storage")
+            print(" Google Drive not authorized yet")
+            print(" Visit http://localhost:8000/authorize to login")
+            print(" Worker will use fallback local storage")
         else:
-            print(f"✅ Google Drive connected (OAuth)")
-            print(f"📁 Folder ID: {GOOGLE_DRIVE_FOLDER_ID or 'Root (My Drive)'}")
+            print(f" Google Drive connected (OAuth)")
+            print(f" Folder ID: {GOOGLE_DRIVE_FOLDER_ID or 'Root (My Drive)'}")
     except Exception as e:
         print(f"❌ Google Drive error: {e}")
         print("🔄 Worker will use fallback local storage")
     
     # Connect to RabbitMQ
     try:
-        print("\n🐰 Connecting to RabbitMQ...")
         params = pika.URLParameters(RABBITMQ_URL)
         connection = pika.BlockingConnection(params)
         channel = connection.channel()
-        print("✅ RabbitMQ connected")
         
         # Declare queue with TTL and DLX matching definitions.json
-        print("\n📋 Declaring queue...")
         queue_args = {
             'x-message-ttl': 300000,
             'x-dead-letter-exchange': 'dlx_face_swap'
@@ -205,15 +204,9 @@ def main():
             durable=True,
             arguments=queue_args
         )
-        print("✅ Queue declared: face_swap_jobs")
         
         # Set QoS - process one message at a time
         channel.basic_qos(prefetch_count=1)
-        print("✅ QoS set: prefetch_count=1")
-        
-        print("\n" + "=" * 60)
-        print("✅ Worker is ready! Waiting for jobs...")
-        print("=" * 60 + "\n")
         
         channel.basic_consume(
             queue="face_swap_jobs",
@@ -231,7 +224,6 @@ def main():
             connection.close()
         client.close()
     except Exception as e:
-        print(f"\n❌ Fatal error in main loop: {e}")
         import traceback
         traceback.print_exc()
         raise e
@@ -240,6 +232,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"\n❌ Worker failed to start: {e}")
         import sys
         sys.exit(1)

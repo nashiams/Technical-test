@@ -1,4 +1,5 @@
 # server.py
+import datetime
 from flask import Flask, request, jsonify, send_file
 import uuid
 import os
@@ -101,7 +102,7 @@ def publish():
         release_lock(session_id)
         return jsonify({"error": f"DB error: {e}"}), 500
 
-    # 📨 Publish to RabbitMQ (worker will process)
+    #  Publish to RabbitMQ (worker will process)
     try:
         publish_job(
             job_id=job_id,
@@ -117,8 +118,6 @@ def publish():
         release_lock(session_id)
         return jsonify({"error": f"Failed to publish job: {e}"}), 500
 
-    #  Respond success
-    print(f"📤 Responding with job_id: {job_id}")
     
     # Create response with explicit no-cache headers
     response = jsonify({"status": "processing", "jobId": job_id})
@@ -158,7 +157,6 @@ def update_status():
     job_id = data.get("jobId")
     result_url = data.get("resultUrl")
 
-    print(f"🔔 /update_status called for job: {job_id}")
 
     if not job_id or not result_url:
         return jsonify({"error": "Missing jobId or resultUrl"}), 400
@@ -168,22 +166,56 @@ def update_status():
         return jsonify({"error": "Job not found"}), 404
 
     session_id = job.get("sessionId")
-    print(f"📍 Job {job_id} belongs to session: {session_id}")
 
     jobs_collection.update_one(
         {"jobId": job_id},
         {"$set": {"status": "completed", "resultUrl": result_url}}
     )
-    print(f"✅ Job {job_id} marked as completed in MongoDB")
 
     # Release session lock (worker finished)
     try:
-        print(f"🔓 Attempting to release lock for session: {session_id}")
         release_lock(session_id)
-        print(f"✅ Lock release attempted for session: {session_id}")
+    except Exception as e:
+        print(f" Failed to release lock: {e}")
+
+    return jsonify({"status": "updated"}), 200
+
+
+@app.route("/update_error", methods=["POST"])
+def update_error():
+    """
+    INTERNAL endpoint to handle job failures from worker
+    """
+    data = request.get_json(force=True)
+    job_id = data.get("jobId")
+    error = data.get("error")
+    
+    
+    if not job_id:
+        return jsonify({"error": "Missing jobId"}), 400
+    
+    job = jobs_collection.find_one({"jobId": job_id})
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    session_id = job.get("sessionId")
+    
+    # Update job status to failed
+    jobs_collection.update_one(
+        {"jobId": job_id},
+        {"$set": {
+            "status": "failed",
+            "error": error or "Processing failed",
+            "updatedAt": datetime.utcnow()
+        }}
+    )
+    
+    # Release session lock
+    try:
+        release_lock(session_id)
     except Exception as e:
         print(f"❌ Failed to release lock: {e}")
-
+    
     return jsonify({"status": "updated"}), 200
 
 

@@ -2,7 +2,7 @@
 
 # ============================================================
 # Vercel Frontend Deployment Script
-# Deploys the Next.js app to: https://freefaceswap.vercel.app/
+# Deploys the Next.js app to Vercel
 # ============================================================
 
 set -e  # Exit on error
@@ -34,7 +34,7 @@ echo ""
 echo "📦 Installing dependencies..."
 npm install
 
-# Build the project (optional, Vercel will build automatically)
+# Build the project
 echo ""
 echo "🔨 Building project..."
 npm run build
@@ -44,13 +44,11 @@ echo ""
 echo "🚀 Deploying to Vercel..."
 echo "============================================================"
 
-# Production deployment
-vercel --prod \
-    --name freefaceswap \
-    --yes
+# Production deployment (without deprecated --name flag)
+vercel --prod --yes
 
 echo ""
 echo "============================================================"
 echo "✅ Deployment complete!"
-echo "🌐 Your app is live at: https://freefaceswap.vercel.app/"
+echo "🌐 Check your deployment at: https://vercel.com/dashboard"
 echo "============================================================"

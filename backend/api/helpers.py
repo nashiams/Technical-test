@@ -62,7 +62,6 @@ def publish_job(job_id, img1_path, img2_path, session_id):
             )
         )
         
-        print(f"✅ Published job {job_id} to queue")
         
         # Close connection
         connection.close()
@@ -83,13 +82,10 @@ def acquire_lock(session_id, timeout=300):
         locked = redis_client.set(lock_key, "locked", nx=True, ex=timeout)
         
         if locked:
-            print(f"🔒 Lock acquired for session: {session_id} (key: {lock_key})")
             return True
         else:
-            print(f"⚠️ Lock already exists for session: {session_id}")
             return False
     except Exception as e:
-        print(f"❌ Failed to acquire lock: {e}")
         return False
 
 
@@ -100,24 +96,21 @@ def release_lock(session_id):
         
         # Check if key exists before deletion
         exists_before = redis_client.exists(lock_key)
-        print(f"🔍 Lock key '{lock_key}' exists before deletion: {exists_before}")
+        print(f" Lock key '{lock_key}' exists before deletion: {exists_before}")
         
         # Delete the key
         result = redis_client.delete(lock_key)
         
         # Verify deletion
         exists_after = redis_client.exists(lock_key)
-        print(f"🔍 Lock key '{lock_key}' exists after deletion: {exists_after}")
         
         if result > 0:
-            print(f"🔓 Lock released for session: {session_id} (deleted key: {lock_key})")
             if exists_after:
-                print(f"⚠️ WARNING: Key still exists after deletion!")
+                print(f" WARNING: Key still exists after deletion!")
         else:
-            print(f"⚠️ No lock found to release for session: {session_id} (key: {lock_key})")
+            print(f" No lock found to release for session: {session_id} (key: {lock_key})")
             
     except Exception as e:
-        print(f"❌ Failed to release lock: {e}")
         import traceback
         traceback.print_exc()
 
